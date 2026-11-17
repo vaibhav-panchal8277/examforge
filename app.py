@@ -1,3 +1,5 @@
+import html
+
 import streamlit as st
 import pandas as pd
 from extractor import extract_text_from_pdf
@@ -40,33 +42,41 @@ st.markdown("""
         font-weight: 700;
     }
 
-    /* Tab styling */
-    .stTabs [data-baseweb="tab-list"] {
+    /* Tab styling. ARIA roles are used as selectors because Streamlit's
+       internal attributes (e.g. data-baseweb) change between versions. */
+    .stTabs [role="tablist"] {
         gap: 20px;
         background-color: transparent;
     }
-    .stTabs [data-baseweb="tab"] {
+    .stTabs [role="tab"] {
         padding: 10px 20px;
         background-color: #1e2130;
         border-radius: 8px 8px 0 0;
         border: 1px solid #ffffff10;
         border-bottom: none;
     }
-    
-    /* Input and Cards styling */
-    .stCard {
+
+    /* Card styling: each tab's content is the card. (Wrapping content in a
+       <div> via st.markdown doesn't work: Streamlit renders it as an empty box.) */
+    .stTabs [role="tabpanel"] {
         background: rgba(30, 33, 48, 0.6);
         border: 1px solid rgba(255, 255, 255, 0.05);
         border-radius: 12px;
         padding: 24px;
         margin-bottom: 24px;
         backdrop-filter: blur(10px);
-        transition: all 0.3s ease;
+        transition: border-color 0.3s ease, box-shadow 0.3s ease;
     }
-    .stCard:hover {
+    .stTabs [role="tabpanel"]:hover {
         border-color: rgba(129, 140, 248, 0.5);
         box-shadow: 0 8px 32px rgba(129, 140, 248, 0.1);
-        transform: translateY(-2px);
+    }
+
+    /* Marks label next to each question: keep "[10 Marks]" on one line */
+    .marks-label {
+        white-space: nowrap;
+        text-align: right;
+        font-weight: 700;
     }
 
     /* Status Dots */
@@ -188,10 +198,10 @@ ready = (
     or (not _use_openai and st.session_state.get("ollama_model"))
 )
 
-if not ready:
-    st.title("Welcome to ExamForge")
-    st.info("Welcome! Please configure your AI backend in the sidebar to begin.")
-    st.stop()
+# Note: don't st.stop() here. Streamlit discards the state of keyed widgets that
+# aren't rendered in a run, so hiding the tabs would wipe the exam settings when
+# the user toggles the backend. Instead the UI always renders and only the
+# AI buttons are disabled until a backend is ready.
 
 # ── Helper: build shared AI kwargs ────────────────────────────────────────────
 def ai_kwargs() -> dict:
@@ -206,7 +216,9 @@ def ai_kwargs() -> dict:
 st.title("ExamForge")
 st.markdown("#### Generate professional exam papers in seconds")
 
-if _use_openai:
+if not ready:
+    st.info("Please configure your AI backend in the sidebar to analyze syllabi and generate questions.")
+elif _use_openai:
     st.caption(f"Backend: OpenAI ({st.session_state.get('openai_model')})")
 else:
     st.caption(f"Backend: Local Ollama ({st.session_state.get('ollama_model')})")
@@ -214,7 +226,6 @@ else:
 tab1, tab2, tab3, tab4 = st.tabs(["1. Upload", "2. Configuration", "3. Generated Paper", "4. Export"])
 
 with tab1:
-    st.markdown('<div class="stCard">', unsafe_allow_html=True)
     st.header("Upload Syllabus PDF")
     st.markdown("Upload your syllabus to extract and analyze its topic structure automatically.")
 
@@ -223,7 +234,7 @@ with tab1:
     if uploaded_file is not None:
         st.success(f"File uploaded: **{uploaded_file.name}**")
 
-        if st.button("Extract & Analyze Syllabus", type="primary"):
+        if st.button("Extract & Analyze Syllabus", type="primary", disabled=not ready):
             read_error = None
             with st.spinner("Extracting text from PDF..."):
                 try:
@@ -259,10 +270,8 @@ with tab1:
             for i, t in enumerate(st.session_state.topics):
                 st.markdown(f"**{i + 1}. {t.get('topic_name', 'Unknown')}**")
                 st.caption(t.get("description", ""))
-    st.markdown('</div>', unsafe_allow_html=True)
 
 with tab2:
-    st.markdown('<div class="stCard">', unsafe_allow_html=True)
     st.header("Exam Configuration")
 
     col1, col2 = st.columns(2)
@@ -284,7 +293,7 @@ with tab2:
             st.session_state.marks_distribution = edited_df
 
     st.markdown("<br>", unsafe_allow_html=True)
-    if st.button("Generate Questions", type="primary"):
+    if st.button("Generate Questions", type="primary", disabled=not ready):
         if not st.session_state.topics:
             st.error("Please upload and analyze a syllabus first (Upload tab).")
         else:
@@ -302,10 +311,8 @@ with tab2:
                         st.success(f"Generated **{len(questions)}** question(s). Check the 'Generated Paper' tab.")
                     except Exception as e:
                         st.error(f"Question generation failed: {e}")
-    st.markdown('</div>', unsafe_allow_html=True)
 
 with tab3:
-    st.markdown('<div class="stCard">', unsafe_allow_html=True)
     st.header("Generated Question Paper")
 
     if st.session_state.generated_questions:
@@ -317,19 +324,18 @@ with tab3:
         st.divider()
 
         for idx, q in enumerate(st.session_state.generated_questions, 1):
-            col_q, col_m = st.columns([8, 1])
+            col_q, col_m = st.columns([5, 1])
             with col_q:
                 st.markdown(f"**Q{idx}.** {q.get('question_text', '')}")
                 st.caption(f"Topic: {q.get('topic_name', 'Unknown')}")
             with col_m:
-                st.markdown(f"**[{q.get('marks', 0)} Marks]**")
+                marks = html.escape(str(q.get('marks', 0)))
+                st.markdown(f"<div class='marks-label'>[{marks} Marks]</div>", unsafe_allow_html=True)
             st.markdown("<hr style='margin:8px 0;opacity:0.15;'>", unsafe_allow_html=True)
     else:
         st.info("No questions generated yet. Go to the 'Configuration' tab to generate.")
-    st.markdown('</div>', unsafe_allow_html=True)
 
 with tab4:
-    st.markdown('<div class="stCard">', unsafe_allow_html=True)
     st.header("Export to PDF")
 
     if st.session_state.generated_questions:
@@ -352,4 +358,3 @@ with tab4:
             )
     else:
         st.info("Generate questions first, then export here.")
-    st.markdown('</div>', unsafe_allow_html=True)
