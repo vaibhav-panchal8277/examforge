@@ -38,6 +38,7 @@ def generate_questions(
     prompt = (
         f"Generate {len(question_plan)} exam questions. Difficulty: {difficulty}. "
         "Low marks = short question. High marks = detailed question. "
+        "Write exactly one question per item, in the same order as the list. "
         "Return ONLY JSON: {\"questions\": [{\"question_number\": 1, \"question_text\": \"...\", \"marks\": 5, \"topic_name\": \"...\"}]}. "
         "No markdown, no extra text.\n\n"
         f"Topics and marks:\n{json.dumps(compact_plan)}"
@@ -59,7 +60,36 @@ def generate_questions(
         response = client.chat.completions.create(**kwargs)
 
     data = _extract_json(response.choices[0].message.content)
-    questions = data.get("questions", [])
+    questions = data.get("questions", []) if isinstance(data, dict) else []
+    return _merge_with_plan(question_plan, questions)
+
+
+def _merge_with_plan(question_plan: list, questions: list) -> list:
+    """
+    Combine the model's question text with the configured plan.
+
+    Marks and topics always come from the plan, never from the model, so the
+    paper matches the configured distribution and marks are always integers.
+    Raises ValueError if the model returned too few usable questions.
+    """
     if not questions:
         raise ValueError("Model returned empty questions. Try reducing the number of questions or use a different model.")
-    return questions
+    if len(questions) < len(question_plan):
+        raise ValueError(
+            f"Model returned {len(questions)} of {len(question_plan)} questions. "
+            "Try again, reduce the number of questions, or use a different model."
+        )
+
+    result = []
+    for i, (planned, q) in enumerate(zip(question_plan, questions), 1):
+        text = q.get("question_text", "") if isinstance(q, dict) else q
+        text = str(text or "").strip()
+        if not text:
+            raise ValueError(f"Model returned an empty question {i}. Try again or use a different model.")
+        result.append({
+            "question_number": i,
+            "question_text": text,
+            "marks": planned["marks"],
+            "topic_name": planned["topic_name"],
+        })
+    return result
