@@ -92,4 +92,10 @@ If you prefer to run ExamForge entirely offline:
 
 ## Testing
 
+Run the unit tests:
+```bash
+pip install -r requirements.txt -r requirements-dev.txt
+pytest tests
+```
+
 Tested using [TestGrid.io](https://testgrid.io)
