@@ -314,18 +314,22 @@ with tab4:
 
     if st.session_state.generated_questions:
         st.markdown("Your question paper is ready to be exported as a PDF.")
-        pdf_buffer = generate_pdf(
-            st.session_state.exam_name,
-            st.session_state.subject_name,
-            st.session_state.generated_questions
-        )
-        st.download_button(
-            label="Download Question Paper PDF",
-            data=pdf_buffer,
-            file_name="QuestionPaper.pdf",
-            mime="application/pdf",
-            type="primary"
-        )
+        try:
+            pdf_buffer = generate_pdf(
+                st.session_state.exam_name,
+                st.session_state.subject_name,
+                st.session_state.generated_questions
+            )
+        except Exception as e:
+            st.error(f"Could not build the PDF: {e}")
+        else:
+            st.download_button(
+                label="Download Question Paper PDF",
+                data=pdf_buffer,
+                file_name="QuestionPaper.pdf",
+                mime="application/pdf",
+                type="primary"
+            )
     else:
         st.info("Generate questions first, then export here.")
     st.markdown('</div>', unsafe_allow_html=True)

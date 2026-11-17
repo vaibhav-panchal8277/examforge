@@ -2,6 +2,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 import io
+from xml.sax.saxutils import escape
 
 def generate_pdf(exam_name: str, subject_name: str, questions: list) -> io.BytesIO:
     buffer = io.BytesIO()
@@ -39,8 +40,8 @@ def generate_pdf(exam_name: str, subject_name: str, questions: list) -> io.Bytes
     
     Story = []
     
-    Story.append(Paragraph(exam_name, title_style))
-    Story.append(Paragraph(subject_name, subject_style))
+    Story.append(Paragraph(escape(str(exam_name)), title_style))
+    Story.append(Paragraph(escape(str(subject_name)), subject_style))
     
     Story.append(Spacer(1, 12))
     
@@ -51,8 +52,10 @@ def generate_pdf(exam_name: str, subject_name: str, questions: list) -> io.Bytes
     Story.append(Spacer(1, 24))
     
     for idx, q in enumerate(questions, 1):
-        q_text = f"<b>Q{idx}.</b> {q.get('question_text', '')}"
-        marks_text = f"[{q.get('marks', 0)} Marks]"
+        # Escape model/user text: ReportLab parses Paragraph content as markup,
+        # so "vector<int>" would be silently dropped and "<br>" would crash.
+        q_text = f"<b>Q{idx}.</b> {escape(str(q.get('question_text', '')))}"
+        marks_text = f"[{escape(str(q.get('marks', 0)))} Marks]"
         
         p_text = f"{q_text} <font color=grey><i>{marks_text}</i></font>"
         Story.append(Paragraph(p_text, question_style))
