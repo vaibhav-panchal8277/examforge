@@ -22,54 +22,17 @@ st.set_page_config(
 )
 
 # ── Global styles ──────────────────────────────────────────────────────────────
+# Colors, fonts and radii come from .streamlit/config.toml (light + dark theme).
+# Keep custom CSS color-neutral so it works in both themes.
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
-    
-    html, body, [class*="css"] { 
-        font-family: 'Outfit', sans-serif; 
-    }
-
-    /* Background and gradients */
-    .stApp {
-        background: linear-gradient(135deg, #0f1117 0%, #151824 100%);
-    }
-
-    h1, h2, h3 {
-        background: linear-gradient(90deg, #818cf8 0%, #c084fc 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        font-weight: 700;
-    }
-
-    /* Tab styling. ARIA roles are used as selectors because Streamlit's
-       internal attributes (e.g. data-baseweb) change between versions. */
+    /* Tabs: a little larger, bolder and more spaced than Streamlit's default */
     .stTabs [role="tablist"] {
-        gap: 20px;
-        background-color: transparent;
+        gap: 1.75rem;
     }
-    .stTabs [role="tab"] {
-        padding: 10px 20px;
-        background-color: #1e2130;
-        border-radius: 8px 8px 0 0;
-        border: 1px solid #ffffff10;
-        border-bottom: none;
-    }
-
-    /* Card styling: each tab's content is the card. (Wrapping content in a
-       <div> via st.markdown doesn't work: Streamlit renders it as an empty box.) */
-    .stTabs [role="tabpanel"] {
-        background: rgba(30, 33, 48, 0.6);
-        border: 1px solid rgba(255, 255, 255, 0.05);
-        border-radius: 12px;
-        padding: 24px;
-        margin-bottom: 24px;
-        backdrop-filter: blur(10px);
-        transition: border-color 0.3s ease, box-shadow 0.3s ease;
-    }
-    .stTabs [role="tabpanel"]:hover {
-        border-color: rgba(129, 140, 248, 0.5);
-        box-shadow: 0 8px 32px rgba(129, 140, 248, 0.1);
+    .stTabs [role="tab"] p {
+        font-size: 0.95rem;
+        font-weight: 600;
     }
 
     /* Marks label next to each question: keep "[10 Marks]" on one line */
@@ -79,7 +42,14 @@ st.markdown("""
         font-weight: 700;
     }
 
-    /* Status Dots */
+    /* Sidebar logo shown as a rounded app-icon tile */
+    [data-testid="stSidebar"] [data-testid="stImage"] img {
+        border-radius: 22%;
+    }
+    .sidebar-brand { text-align: center; margin: 0; }
+    .sidebar-tagline { text-align: center; opacity: 0.65; margin-top: 0.25rem; }
+
+    /* Backend status dots */
     .status-dot {
         display: inline-block;
         width: 9px; height: 9px;
@@ -87,31 +57,9 @@ st.markdown("""
         margin-right: 6px;
         vertical-align: middle;
     }
-    .dot-green { background:#10b981; box-shadow:0 0 8px #10b98188; }
-    .dot-red   { background:#ef4444; box-shadow:0 0 8px #ef444488; }
-    .dot-blue  { background:#6366f1; box-shadow:0 0 8px #6366f188; }
-    
-    /* Sidebar styling */
-    [data-testid="stSidebar"] {
-        background: rgba(15, 17, 23, 0.95);
-        border-right: 1px solid rgba(255,255,255,0.05);
-    }
-    
-    /* Buttons */
-    .stButton > button {
-        background: linear-gradient(90deg, #6366f1 0%, #8b5cf6 100%);
-        border: none;
-        border-radius: 8px;
-        color: white;
-        font-weight: 600;
-        padding: 0.5rem 1rem;
-        transition: opacity 0.2s;
-    }
-    .stButton > button:hover {
-        opacity: 0.9;
-        color: white;
-        border: none;
-    }
+    .dot-green { background: #10b981; }
+    .dot-red   { background: #ef4444; }
+    .dot-blue  { background: #6366f1; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -133,6 +81,14 @@ for k, v in DEFAULTS.items():
     if k not in st.session_state:
         st.session_state[k] = v
 
+# Streamlit discards a keyed widget's value whenever that widget isn't rendered
+# in a run (e.g. the OpenAI key field while Ollama is selected). Re-assigning
+# the values at the top of every run stops that, so switching backends keeps them.
+WIDGET_KEYS = ["use_openai", "openai_key", "openai_model", "ollama_model",
+               "exam_name", "subject_name", "difficulty"]
+for k in WIDGET_KEYS:
+    st.session_state[k] = st.session_state[k]
+
 # ── Sidebar ────────────────────────────────────────────────────────────────────
 with st.sidebar:
     # Rich UI: Display Logo
@@ -141,8 +97,8 @@ with st.sidebar:
         with col2:
             st.image("logo.png", width="stretch")
             
-    st.markdown("<h2 style='text-align: center; margin-top: -10px;'>ExamForge</h2>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: #94a3b8;'>AI-Powered Question Generator</p>", unsafe_allow_html=True)
+    st.markdown("<h2 class='sidebar-brand'>ExamForge</h2>", unsafe_allow_html=True)
+    st.markdown("<p class='sidebar-tagline'>AI-Powered Question Generator</p>", unsafe_allow_html=True)
     st.divider()
 
     st.toggle(

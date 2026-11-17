@@ -1,0 +1,37 @@
+# ExamForge theme: slate neutrals with an indigo accent, in light and dark.
+# With both [theme.light] and [theme.dark] set, the app follows the viewer's
+# system setting, and viewers can switch in the app menu (⋮ → Settings).
+
+[theme]
+font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+headingFont = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+headingFontWeights = [700, 600, 600, 600, 600, 600]
+baseFontSize = 15
+baseRadius = "0.5rem"
+buttonRadius = "0.5rem"
+showWidgetBorder = true
+showSidebarBorder = true
+
+[theme.light]
+primaryColor = "#4f46e5"              # indigo-600
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f1f5f9"  # slate-100
+textColor = "#0f172a"                 # slate-900
+borderColor = "#e2e8f0"               # slate-200
+linkColor = "#4338ca"                 # indigo-700
+
+[theme.light.sidebar]
+backgroundColor = "#f8fafc"           # slate-50
+secondaryBackgroundColor = "#ffffff"
+
+[theme.dark]
+primaryColor = "#6366f1"              # indigo-500: white button text stays readable
+backgroundColor = "#0b1120"
+secondaryBackgroundColor = "#1e293b"  # slate-800
+textColor = "#e2e8f0"                 # slate-200
+borderColor = "#334155"               # slate-700
+linkColor = "#a5b4fc"                 # indigo-300
+
+[theme.dark.sidebar]
+backgroundColor = "#0f172a"           # slate-900
+secondaryBackgroundColor = "#1e293b"  # slate-800
