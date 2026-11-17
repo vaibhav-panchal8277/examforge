@@ -17,25 +17,43 @@ ExamForge is a professional web application that allows educators to upload a sy
   - **OpenAI (Cloud):** Use powerful models like `gpt-4o-mini` or `gpt-4o` for maximum quality and speed via API key.
 - **Smart Generation:** Generates non-repetitive, topic-balanced questions adapting depth to the assigned marks.
 - **PDF Export:** Downloads the final generated question paper as a clean, professionally formatted PDF.
-- **Rich UI:** Sleek, modern dark-mode interface built on Streamlit with premium typography and glassmorphic cards.
+- **Light & Dark Themes:** Clean slate-and-indigo interface built on Streamlit that follows your system's light or dark setting.
 
 ## Screenshots
 
-### 1. Upload & Analyze Dashboard
+Screenshots follow your GitHub theme: switch GitHub between light and dark mode to see both.
+
+### 1. Upload & Analyze Syllabus
 Upload your syllabus and select your AI backend (Local or Cloud).
-![ExamForge Dashboard UI](assets/Home.png)
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/upload-dark.png">
+  <img alt="ExamForge upload tab with discovered syllabus topics" src="assets/screenshots/upload-light.png">
+</picture>
 
 ### 2. Exam Configuration
 Define your exact exam marks and difficulty level.
-![Exam Configuration UI](assets/Exam_Conf.png)
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/configuration-dark.png">
+  <img alt="Exam configuration with exam name, difficulty and marks distribution" src="assets/screenshots/configuration-light.png">
+</picture>
 
 ### 3. Generated Question Paper
 Instantly generate and review balanced questions tailored to your marks distribution.
-![Generated Question Paper UI](assets/Eaxm_Qus.png)
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/generated-paper-dark.png">
+  <img alt="Generated question paper with questions, topics and marks" src="assets/screenshots/generated-paper-light.png">
+</picture>
 
 ### 4. PDF Export
 Download a professionally formatted question paper ready for print.
-![PDF Export UI](assets/Qus_pdf.png)
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/export-dark.png">
+  <img alt="Export tab with the Download Question Paper PDF button" src="assets/screenshots/export-light.png">
+</picture>
 
 ## Setup Instructions
 

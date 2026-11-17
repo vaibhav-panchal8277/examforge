@@ -2,6 +2,10 @@
 # With both [theme.light] and [theme.dark] set, the app follows the viewer's
 # system setting, and viewers can switch in the app menu (⋮ → Settings).
 
+[client]
+# Production toolbar: hides developer-only items such as the "Deploy" button.
+toolbarMode = "minimal"
+
 [theme]
 font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
 headingFont = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
