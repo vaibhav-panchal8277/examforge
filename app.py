@@ -8,6 +8,10 @@ from pdf_export import generate_pdf
 from utils import get_available_ollama_models
 import os
 
+# Key from .env (loaded by utils). Kept server-side as a fallback and never
+# put into a widget, because widget values are sent to the browser.
+ENV_OPENAI_KEY = os.getenv("OPENAI_API_KEY", "").strip()
+
 # ── Page config ────────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="ExamForge - AI Question Generator",
@@ -150,6 +154,8 @@ with st.sidebar:
         
         if st.session_state.openai_key:
             st.success("API key entered.")
+        elif ENV_OPENAI_KEY:
+            st.success("Using API key from .env.")
         else:
             st.warning("Enter your OpenAI API key to continue.")
 
@@ -178,7 +184,7 @@ with st.sidebar:
 # ── Guard: ensure a model is ready ────────────────────────────────────────────
 _use_openai = st.session_state.use_openai
 ready = (
-    (_use_openai and st.session_state.get("openai_key"))
+    (_use_openai and (st.session_state.get("openai_key") or ENV_OPENAI_KEY))
     or (not _use_openai and st.session_state.get("ollama_model"))
 )
 
@@ -191,7 +197,7 @@ if not ready:
 def ai_kwargs() -> dict:
     return {
         "use_openai":   st.session_state.use_openai,
-        "openai_key":   st.session_state.get("openai_key", ""),
+        "openai_key":   st.session_state.get("openai_key", "") or ENV_OPENAI_KEY,
         "openai_model": st.session_state.get("openai_model", "gpt-4o-mini"),
         "ollama_model": st.session_state.get("ollama_model", ""),
     }
