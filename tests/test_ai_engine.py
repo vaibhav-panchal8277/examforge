@@ -56,3 +56,45 @@ def test_generate_questions_end_to_end(monkeypatch):
 
     result = ai_engine.generate_questions(PLAN, "Medium", use_openai=False, ollama_model="test-model")
     assert [(q["question_text"], q["marks"]) for q in result] == [("A", 5), ("B", 10)]
+
+
+def _capture_prompt(monkeypatch, n):
+    seen = {}
+    content = '{"questions": [%s]}' % ", ".join('{"question_text": "Q%d"}' % i for i in range(n))
+    response = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=content))])
+
+    def create(**kw):
+        seen.update(kw)
+        return response
+
+    client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+    monkeypatch.setattr(ai_engine, "get_llm_client", lambda *a, **k: (client, "m"))
+    return seen
+
+
+def test_topic_descriptions_are_sent(monkeypatch):
+    seen = _capture_prompt(monkeypatch, 2)
+    plan = [
+        {"topic_name": "Sorting", "description": "Quicksort and mergesort analysis", "marks": 5},
+        {"topic_name": "Graphs", "description": "", "marks": 10},
+    ]
+    ai_engine.generate_questions(plan, "Hard", use_openai=False, ollama_model="m")
+    prompt = seen["messages"][-1]["content"]
+    assert "Quicksort and mergesort analysis" in prompt
+    assert '"topic": "Graphs", "marks": 10}' in prompt  # no empty "covers" key
+
+
+def test_long_descriptions_are_trimmed(monkeypatch):
+    seen = _capture_prompt(monkeypatch, 1)
+    plan = [{"topic_name": "T", "description": "d" * 5000, "marks": 5}]
+    ai_engine.generate_questions(plan, "Easy", use_openai=False, ollama_model="m")
+    prompt = seen["messages"][-1]["content"]
+    assert "d" * ai_engine.MAX_DESCRIPTION_CHARS in prompt
+    assert "d" * (ai_engine.MAX_DESCRIPTION_CHARS + 1) not in prompt
+
+
+def test_max_tokens_scales_with_question_count(monkeypatch):
+    seen = _capture_prompt(monkeypatch, 30)
+    plan = [{"topic_name": "T", "description": "", "marks": 5}] * 30
+    ai_engine.generate_questions(plan, "Easy", use_openai=False, ollama_model="m")
+    assert seen["max_tokens"] == 6000

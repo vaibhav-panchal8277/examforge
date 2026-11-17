@@ -40,7 +40,7 @@ Download a professionally formatted question paper ready for print.
 ## Setup Instructions
 
 ### Prerequisites
-- Python 3.9+
+- Python 3.11+
 - (Optional) [Ollama](https://ollama.com/) for local AI generation.
 
 ### Installation
@@ -85,7 +85,7 @@ If you prefer to run ExamForge entirely offline:
 ## Tech Stack
 - **Frontend:** Streamlit
 - **Backend Logic:** Python
-- **PDF Extraction:** pdfplumber, PyPDF2
+- **PDF Extraction:** pdfplumber, pypdf
 - **AI Integration:** OpenAI Python SDK (compatible with OpenAI & Ollama)
 - **PDF Generation:** ReportLab
 - **Data Handling:** Pandas

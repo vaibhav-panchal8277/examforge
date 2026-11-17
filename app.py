@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 from extractor import extract_text_from_pdf
-from syllabus_parser import parse_syllabus_structure
+from syllabus_parser import CHUNK_CHARS, MAX_CHUNKS, is_truncated, parse_syllabus_structure, split_text
 from distribution import distribute_questions
 from ai_engine import generate_questions
 from pdf_export import generate_pdf
@@ -129,7 +129,7 @@ with st.sidebar:
     if os.path.exists("logo.png"):
         col1, col2, col3 = st.columns([1,2,1])
         with col2:
-            st.image("logo.png", use_container_width=True)
+            st.image("logo.png", width="stretch")
             
     st.markdown("<h2 style='text-align: center; margin-top: -10px;'>ExamForge</h2>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center; color: #94a3b8;'>AI-Powered Question Generator</p>", unsafe_allow_html=True)
@@ -224,18 +224,32 @@ with tab1:
         st.success(f"File uploaded: **{uploaded_file.name}**")
 
         if st.button("Extract & Analyze Syllabus", type="primary"):
+            read_error = None
             with st.spinner("Extracting text from PDF..."):
-                extracted_text = extract_text_from_pdf(uploaded_file)
+                try:
+                    extracted_text = extract_text_from_pdf(uploaded_file)
+                except ValueError as e:
+                    extracted_text, read_error = "", e
                 st.session_state.syllabus_text = extracted_text
 
-            if not extracted_text.strip():
+            if read_error:
+                st.error(f"{read_error}. Is this a valid PDF file?")
+            elif not extracted_text.strip():
                 st.error("No text could be extracted. The PDF may be scanned or image-based.")
             else:
+                if is_truncated(extracted_text):
+                    st.warning(
+                        f"This syllabus is long; only the first {MAX_CHUNKS * CHUNK_CHARS:,} "
+                        f"of {len(extracted_text):,} characters will be analyzed."
+                    )
+                n_parts = min(len(split_text(extracted_text)), MAX_CHUNKS)
                 backend_label = f"OpenAI ({st.session_state.get('openai_model')})" if _use_openai else f"Ollama ({st.session_state.get('ollama_model')})"
-                with st.spinner(f"Analyzing syllabus with {backend_label} — please wait..."):
+                with st.spinner(f"Analyzing syllabus ({n_parts} part(s)) with {backend_label} — please wait..."):
                     try:
                         topics = parse_syllabus_structure(extracted_text, **ai_kwargs())
                         st.session_state.topics = topics
+                        # Questions from a previous syllabus no longer apply.
+                        st.session_state.generated_questions = []
                         st.success(f"Done! Discovered **{len(topics)}** topic(s).")
                     except Exception as e:
                         st.error(f"AI analysis failed: {e}")
@@ -264,7 +278,7 @@ with tab2:
             st.session_state.marks_distribution,
             key="marks_editor",
             num_rows="dynamic",
-            use_container_width=True
+            width="stretch"
         )
         if not edited_df.equals(st.session_state.marks_distribution):
             st.session_state.marks_distribution = edited_df

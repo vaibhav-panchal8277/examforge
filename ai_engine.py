@@ -1,6 +1,9 @@
 import json
 from utils import get_llm_client, extract_json, create_json_completion
 
+# Per-topic description length sent to the model; keeps prompts small.
+MAX_DESCRIPTION_CHARS = 300
+
 
 def generate_questions(
     question_plan: list,
@@ -16,15 +19,20 @@ def generate_questions(
     """
     client, model = get_llm_client(use_openai, openai_key, openai_model, ollama_model)
 
-    # Compact plan to reduce tokens
-    compact_plan = [
-        {"topic": q["topic_name"], "marks": q["marks"]}
-        for q in question_plan
-    ]
+    # Compact plan to reduce tokens. The topic description (from the syllabus)
+    # keeps questions tied to what the syllabus actually covers.
+    compact_plan = []
+    for q in question_plan:
+        item = {"topic": q["topic_name"], "marks": q["marks"]}
+        details = str(q.get("description") or "").strip()
+        if details:
+            item["covers"] = details[:MAX_DESCRIPTION_CHARS]
+        compact_plan.append(item)
 
     prompt = (
         f"Generate {len(question_plan)} exam questions. Difficulty: {difficulty}. "
         "Low marks = short question. High marks = detailed question. "
+        "Base each question on its topic and, when given, what the topic covers. "
         "Write exactly one question per item, in the same order as the list. "
         "Return ONLY JSON: {\"questions\": [{\"question_number\": 1, \"question_text\": \"...\", \"marks\": 5, \"topic_name\": \"...\"}]}. "
         "No markdown, no extra text.\n\n"
@@ -37,7 +45,8 @@ def generate_questions(
             {"role": "system", "content": "You are an exam question generator. Output only valid JSON."},
             {"role": "user", "content": prompt},
         ],
-        max_tokens=2048,
+        # Scale with the number of questions so long papers aren't cut off mid-JSON.
+        max_tokens=min(8192, max(2048, 200 * len(question_plan))),
         temperature=0.5,
     )
 
