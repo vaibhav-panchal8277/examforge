@@ -1,18 +1,5 @@
 import json
-import re
-from utils import get_llm_client
-
-
-def _extract_json(text: str) -> dict:
-    """Extract JSON from model output, handling markdown fences gracefully."""
-    fence = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
-    if fence:
-        text = fence.group(1)
-    else:
-        brace = re.search(r"\{.*\}", text, re.DOTALL)
-        if brace:
-            text = brace.group(0)
-    return json.loads(text)
+from utils import get_llm_client, extract_json, create_json_completion
 
 
 def generate_questions(
@@ -54,12 +41,9 @@ def generate_questions(
         temperature=0.5,
     )
 
-    try:
-        response = client.chat.completions.create(**kwargs, response_format={"type": "json_object"})
-    except Exception:
-        response = client.chat.completions.create(**kwargs)
+    response = create_json_completion(client, **kwargs)
 
-    data = _extract_json(response.choices[0].message.content)
+    data = extract_json(response.choices[0].message.content)
     questions = data.get("questions", []) if isinstance(data, dict) else []
     return _merge_with_plan(question_plan, questions)
 

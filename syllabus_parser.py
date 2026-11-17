@@ -1,18 +1,4 @@
-import json
-import re
-from utils import get_llm_client
-
-
-def _extract_json(text: str) -> dict:
-    """Extract JSON from model output, handling markdown fences gracefully."""
-    fence = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
-    if fence:
-        text = fence.group(1)
-    else:
-        brace = re.search(r"\{.*\}", text, re.DOTALL)
-        if brace:
-            text = brace.group(0)
-    return json.loads(text)
+from utils import get_llm_client, extract_json, create_json_completion
 
 
 def parse_syllabus_structure(
@@ -46,13 +32,9 @@ def parse_syllabus_structure(
         temperature=0.2,
     )
 
-    # Try with json response_format; fall back silently for models that don't support it
-    try:
-        response = client.chat.completions.create(**kwargs, response_format={"type": "json_object"})
-    except Exception:
-        response = client.chat.completions.create(**kwargs)
+    response = create_json_completion(client, **kwargs)
 
-    data = _extract_json(response.choices[0].message.content)
+    data = extract_json(response.choices[0].message.content)
     topics = data.get("topics", [])
     if not topics:
         raise ValueError("Model returned empty topics. Try a different model or check the PDF.")
