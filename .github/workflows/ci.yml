@@ -21,9 +21,21 @@ jobs:
       MONGODB_TEST_URI: mongodb://localhost:27017
     steps:
       - uses: actions/checkout@v7
+      # Test on the same Python version the Docker image (production) uses, read
+      # from the Dockerfile, so a base-image bump is tested in its own pull request.
+      - name: Read the Python version from the Dockerfile
+        id: python
+        run: |
+          version=$(sed -nE 's/^FROM python:([0-9]+\.[0-9]+).*/\1/p' Dockerfile | head -n 1)
+          if [ -z "$version" ]; then
+            echo "::error file=Dockerfile::Couldn't read the Python version from the FROM line"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Testing on Python $version (from Dockerfile)"
       - uses: actions/setup-python@v7
         with:
-          python-version: "3.12"
+          python-version: ${{ steps.python.outputs.version }}
           cache: pip
           cache-dependency-path: |
             requirements.txt
