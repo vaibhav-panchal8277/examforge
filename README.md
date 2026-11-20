@@ -198,6 +198,6 @@ Account tests use an in-memory MongoDB by default. To also run them against a re
 MONGODB_TEST_URI=mongodb://localhost:27017 pytest tests
 ```
 
-GitHub Actions ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs the tests and builds and health-checks the Docker image on every push and pull request.
+GitHub Actions ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs the tests and builds and health-checks the Docker image on every push and pull request. The tests run on the same Python version as the Docker image, read from the `Dockerfile`, so an update to the base image is fully tested in its own pull request.
 
 Tested using [TestGrid.io](https://testgrid.io)
