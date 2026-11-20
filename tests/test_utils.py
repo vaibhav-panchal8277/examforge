@@ -53,3 +53,14 @@ def test_other_errors_are_not_retried():
     with pytest.raises(RuntimeError, match="invalid API key"):
         create_json_completion(client, model="m")
     assert len(client.calls) == 1
+
+
+from utils import get_llm_client
+
+
+def test_clients_have_timeout_and_limited_retries():
+    import settings
+    for args in [(True, "sk-test"), (False, "")]:
+        client, _ = get_llm_client(*args, ollama_model="m")
+        assert client.timeout == settings.LLM_TIMEOUT_SECONDS
+        assert client.max_retries == 1

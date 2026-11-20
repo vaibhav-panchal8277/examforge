@@ -6,6 +6,10 @@
 # Production toolbar: hides developer-only items such as the "Deploy" button.
 toolbarMode = "minimal"
 
+[server]
+# Largest file a visitor can upload, in MB (Streamlit's default is 200).
+maxUploadSize = 10
+
 [theme]
 font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
 headingFont = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"

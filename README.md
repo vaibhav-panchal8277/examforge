@@ -73,12 +73,13 @@ Download a professionally formatted question paper ready for print.
    pip install -r requirements.txt
    ```
 
-3. **(Optional) Configure OpenAI**:
-   If you want to use OpenAI, create a `.env` file in the root directory and add your key:
+3. **(Optional) Configure settings**:
+   Copy `.env.example` to `.env` and fill in what you need, for example an OpenAI key:
    ```env
    OPENAI_API_KEY=sk-...
    ```
    *Note: You can also just type your API key directly into the app sidebar!*
+   All settings are listed in [Configuration](#configuration).
 
 ### Running the App
 
@@ -100,6 +101,43 @@ If you prefer to run ExamForge entirely offline:
 3. Ensure the server is running (`ollama serve`).
 4. ExamForge will automatically detect your local models!
 
+## Configuration
+
+Settings are read from environment variables, or from a `.env` file for local use (real environment variables take precedence). See [`.env.example`](.env.example). All are optional.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `OPENAI_API_KEY` | none | Server's OpenAI key, used when a visitor doesn't enter their own. Never sent to the browser. |
+| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server address. `OLLAMA_HOST` is also accepted. |
+| `EXAMFORGE_PASSWORD` | none | Password required to use the app. **Set this before exposing the app publicly.** |
+| `EXAMFORGE_MAX_AI_REQUESTS_PER_HOUR` | `120` | App-wide cap on AI requests using the server's key or Ollama. Visitors using their own key aren't counted. `0` = unlimited. |
+| `EXAMFORGE_LLM_TIMEOUT` | `120` | Seconds before an AI request times out. |
+| `EXAMFORGE_MAX_QUESTIONS` | `50` | Most questions allowed in one paper. |
+| `EXAMFORGE_MAX_MARKS_PER_QUESTION` | `100` | Most marks allowed for one question. |
+
+Uploads are limited to 10 MB (`maxUploadSize` in [`.streamlit/config.toml`](.streamlit/config.toml)).
+
+## Deployment
+
+ExamForge ships with a [`Dockerfile`](Dockerfile). The image runs as a non-root user and includes a health check on `/_stcore/health`.
+
+```bash
+docker build -t examforge .
+docker run -d -p 8501:8501 \
+  -e EXAMFORGE_PASSWORD='choose-a-strong-password' \
+  -e OPENAI_API_KEY='sk-...' \
+  examforge
+```
+
+To use Ollama running on the host machine instead, pass `-e OLLAMA_BASE_URL=http://host.docker.internal:11434` (on Linux, also add `--add-host=host.docker.internal:host-gateway`).
+
+**Before making the app public:**
+- **Set `EXAMFORGE_PASSWORD`.** Without it, anyone who can reach the app can spend your OpenAI key. The app logs a warning at startup if a server key is set without a password.
+- **Serve it over HTTPS**, behind a reverse proxy or a hosting platform that provides TLS, so the password isn't sent in plain text.
+- **Keep the usage cap** (`EXAMFORGE_MAX_AI_REQUESTS_PER_HOUR`) sized to your budget, and set a spending limit in your OpenAI account as a backstop.
+
+Logs go to standard output, in the form `timestamp LEVEL examforge: message` (for example failed sign-ins, usage-limit hits, and AI errors).
+
 ## Tech Stack
 - **Frontend:** Streamlit
 - **Backend Logic:** Python
@@ -115,5 +153,7 @@ Run the unit tests:
 pip install -r requirements.txt -r requirements-dev.txt
 pytest tests
 ```
+
+GitHub Actions ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs the tests and builds and health-checks the Docker image on every push and pull request.
 
 Tested using [TestGrid.io](https://testgrid.io)

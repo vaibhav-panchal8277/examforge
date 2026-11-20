@@ -1,0 +1,21 @@
+# Secrets: pass configuration as environment variables instead.
+.env
+.env.*
+!.env.example
+.streamlit/secrets.toml
+
+# Development files not needed in the image
+.git/
+.github/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+tests/
+requirements-dev.txt
+assets/
+.claude/
+.vscode/
+.idea/
+.DS_Store

@@ -1,18 +1,41 @@
 import html
+import logging
+import math
+import os
 
 import streamlit as st
 import pandas as pd
+
+import settings
+from security import LoginThrottle, RateLimiter, password_matches
 from extractor import extract_text_from_pdf
 from syllabus_parser import CHUNK_CHARS, MAX_CHUNKS, is_truncated, parse_syllabus_structure, split_text
-from distribution import distribute_questions
+from distribution import distribute_questions, validate_distribution
 from ai_engine import generate_questions
 from pdf_export import generate_pdf
-from utils import get_available_ollama_models
-import os
+from utils import OLLAMA_BASE_URL, get_available_ollama_models
 
-# Key from .env (loaded by utils). Kept server-side as a fallback and never
-# put into a widget, because widget values are sent to the browser.
-ENV_OPENAI_KEY = os.getenv("OPENAI_API_KEY", "").strip()
+log = logging.getLogger("examforge")
+if not log.handlers:  # app.py re-runs on every interaction; set up once per process
+    _handler = logging.StreamHandler()
+    _handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+    log.addHandler(_handler)
+    log.setLevel(logging.INFO)
+    log.propagate = False
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Server-side OpenAI key (env var or .env). Used as a fallback and never put
+# into a widget, because widget values are sent to the browser.
+ENV_OPENAI_KEY = settings.OPENAI_API_KEY
+
+
+@st.cache_resource
+def get_ai_limiter() -> RateLimiter:
+    """One limiter shared by every session, so it caps the app's total AI usage."""
+    if ENV_OPENAI_KEY and not settings.ACCESS_PASSWORD:
+        log.warning("OPENAI_API_KEY is set but EXAMFORGE_PASSWORD is not: anyone who can "
+                    "reach this app can use your OpenAI key. Set EXAMFORGE_PASSWORD before exposing it.")
+    return RateLimiter(settings.MAX_AI_REQUESTS_PER_HOUR)
 
 # ── Page config ────────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -63,6 +86,34 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# ── Access password (only when EXAMFORGE_PASSWORD is set) ─────────────────────
+def render_login() -> None:
+    throttle = st.session_state.setdefault("login_throttle", LoginThrottle())
+    _, col, _ = st.columns([1, 1.2, 1])
+    with col:
+        st.title("ExamForge")
+        st.caption("This app is password protected.")
+        with st.form("login"):
+            password = st.text_input("Password", type="password")
+            submitted = st.form_submit_button("Sign in", type="primary", width="stretch")
+        if submitted:
+            wait = throttle.seconds_locked()
+            if wait:
+                st.error(f"Too many attempts. Try again in {math.ceil(wait)} seconds.")
+            elif password_matches(password, settings.ACCESS_PASSWORD):
+                throttle.record_success()
+                st.session_state.authenticated = True
+                st.rerun()
+            else:
+                throttle.record_failure()
+                log.warning("Failed sign-in attempt")
+                st.error("Incorrect password.")
+
+
+if settings.ACCESS_PASSWORD and not st.session_state.get("authenticated"):
+    render_login()
+    st.stop()
+
 # ── Session state defaults ─────────────────────────────────────────────────────
 DEFAULTS = {
     "syllabus_text": "",
@@ -91,11 +142,11 @@ for k in WIDGET_KEYS:
 
 # ── Sidebar ────────────────────────────────────────────────────────────────────
 with st.sidebar:
-    # Rich UI: Display Logo
-    if os.path.exists("logo.png"):
+    logo_path = os.path.join(APP_DIR, "logo.png")
+    if os.path.exists(logo_path):
         col1, col2, col3 = st.columns([1,2,1])
         with col2:
-            st.image("logo.png", width="stretch")
+            st.image(logo_path, width="stretch")
             
     st.markdown("<h2 class='sidebar-brand'>ExamForge</h2>", unsafe_allow_html=True)
     st.markdown("<p class='sidebar-tagline'>AI-Powered Question Generator</p>", unsafe_allow_html=True)
@@ -121,7 +172,7 @@ with st.sidebar:
         if st.session_state.openai_key:
             st.success("API key entered.")
         elif ENV_OPENAI_KEY:
-            st.success("Using API key from .env.")
+            st.success("Using the server's API key.")
         else:
             st.warning("Enter your OpenAI API key to continue.")
 
@@ -141,11 +192,13 @@ with st.sidebar:
             st.caption(f"Using `{st.session_state.ollama_model}` locally.")
         else:
             st.markdown('<span class="status-dot dot-red"></span>**Ollama — Not detected**', unsafe_allow_html=True)
-            st.error("Ollama is not reachable.\n\n`ollama serve`")
+            st.error(f"Ollama is not reachable at `{OLLAMA_BASE_URL}`.\n\nStart it with `ollama serve`.")
             st.session_state["ollama_model"] = ""
 
     st.divider()
-    st.caption("v2.5 · Rich UI Edition")
+    if settings.ACCESS_PASSWORD and st.button("Sign out", width="stretch"):
+        st.session_state.authenticated = False
+        st.rerun()
 
 # ── Guard: ensure a model is ready ────────────────────────────────────────────
 _use_openai = st.session_state.use_openai
@@ -167,6 +220,23 @@ def ai_kwargs() -> dict:
         "openai_model": st.session_state.get("openai_model", "gpt-4o-mini"),
         "ollama_model": st.session_state.get("ollama_model", ""),
     }
+
+
+def reserve_ai_requests(cost: int) -> bool:
+    """
+    Count `cost` AI requests against the app-wide hourly limit, showing an error
+    if it's reached. Visitors using their own OpenAI key aren't limited: they pay.
+    """
+    if st.session_state.use_openai and st.session_state.get("openai_key"):
+        return True
+    allowed, retry_after = get_ai_limiter().try_acquire(cost)
+    if not allowed:
+        log.warning("AI usage limit reached (%s requests/hour)", settings.MAX_AI_REQUESTS_PER_HOUR)
+        st.error(
+            f"This app has reached its limit of {settings.MAX_AI_REQUESTS_PER_HOUR} AI requests per hour. "
+            f"Try again in about {max(1, math.ceil(retry_after / 60))} minute(s), or use your own OpenAI key."
+        )
+    return allowed
 
 # ── Main content ───────────────────────────────────────────────────────────────
 st.title("ExamForge")
@@ -211,15 +281,17 @@ with tab1:
                     )
                 n_parts = min(len(split_text(extracted_text)), MAX_CHUNKS)
                 backend_label = f"OpenAI ({st.session_state.get('openai_model')})" if _use_openai else f"Ollama ({st.session_state.get('ollama_model')})"
-                with st.spinner(f"Analyzing syllabus ({n_parts} part(s)) with {backend_label} — please wait..."):
-                    try:
-                        topics = parse_syllabus_structure(extracted_text, **ai_kwargs())
-                        st.session_state.topics = topics
-                        # Questions from a previous syllabus no longer apply.
-                        st.session_state.generated_questions = []
-                        st.success(f"Done! Discovered **{len(topics)}** topic(s).")
-                    except Exception as e:
-                        st.error(f"AI analysis failed: {e}")
+                if reserve_ai_requests(n_parts):
+                    with st.spinner(f"Analyzing syllabus ({n_parts} part(s)) with {backend_label} — please wait..."):
+                        try:
+                            topics = parse_syllabus_structure(extracted_text, **ai_kwargs())
+                            st.session_state.topics = topics
+                            # Questions from a previous syllabus no longer apply.
+                            st.session_state.generated_questions = []
+                            st.success(f"Done! Discovered **{len(topics)}** topic(s).")
+                        except Exception as e:
+                            log.exception("Syllabus analysis failed")
+                            st.error(f"AI analysis failed: {e}")
 
     if st.session_state.topics:
         with st.expander("View Discovered Topics", expanded=True):
@@ -254,11 +326,13 @@ with tab2:
             st.error("Please upload and analyze a syllabus first (Upload tab).")
         else:
             dist_list = [{"marks": int(row["Marks"]), "count": int(row["Questions"])} for _, row in st.session_state.marks_distribution.iterrows() if pd.notna(row["Marks"]) and pd.notna(row["Questions"])]
-            question_plan = distribute_questions(dist_list, st.session_state.topics)
+            errors = validate_distribution(dist_list, settings.MAX_QUESTIONS, settings.MAX_MARKS_PER_QUESTION)
 
-            if not question_plan:
-                st.error("Invalid distribution configuration. Check your marks table.")
-            else:
+            if errors:
+                for err in errors:
+                    st.error(err)
+            elif reserve_ai_requests(1):
+                question_plan = distribute_questions(dist_list, st.session_state.topics)
                 backend_label = f"OpenAI" if _use_openai else f"Ollama"
                 with st.spinner(f"Generating {len(question_plan)} question(s) with {backend_label}..."):
                     try:
@@ -266,6 +340,7 @@ with tab2:
                         st.session_state.generated_questions = questions
                         st.success(f"Generated **{len(questions)}** question(s). Check the 'Generated Paper' tab.")
                     except Exception as e:
+                        log.exception("Question generation failed")
                         st.error(f"Question generation failed: {e}")
 
 with tab3:
