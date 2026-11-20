@@ -116,6 +116,9 @@ Settings are read from environment variables, or from a `.env` file for local us
 | `EXAMFORGE_PASSWORD` | none | Shared password for the whole app, used only **without** accounts. **Set this (or use accounts) before exposing the app publicly.** |
 | `EXAMFORGE_MAX_AI_REQUESTS_PER_HOUR` | `120` | App-wide cap on AI requests using the server's key or Ollama. Visitors using their own key aren't counted. `0` = unlimited. |
 | `EXAMFORGE_LLM_TIMEOUT` | `120` | Seconds before an AI request times out. |
+| `EXAMFORGE_PDF_MAX_PAGES` | `50` | Longest PDF accepted, in pages. |
+| `EXAMFORGE_PDF_TIMEOUT` | `30` | Seconds allowed to read one PDF. |
+| `EXAMFORGE_PDF_MEMORY_MB` | `512` | Memory allowed to read one PDF. |
 | `EXAMFORGE_MAX_QUESTIONS` | `50` | Most questions allowed in one paper. |
 | `EXAMFORGE_MAX_MARKS_PER_QUESTION` | `100` | Most marks allowed for one question. |
 
@@ -159,6 +162,19 @@ To use Ollama running on the host machine instead, pass `-e OLLAMA_BASE_URL=http
 - **Keep the usage cap** (`EXAMFORGE_MAX_AI_REQUESTS_PER_HOUR`) sized to your budget, and set a spending limit in your OpenAI account as a backstop.
 
 Logs go to standard output, in the form `timestamp LEVEL examforge: message` (for example failed sign-ins, usage-limit hits, and AI errors).
+
+## Security
+
+**Uploaded PDFs are treated as untrusted.**
+- **File checks:** the file must really be a PDF (checked by its header, not just the `.pdf` name), at most 10 MB and 50 pages, and not password-protected.
+- **Isolated parsing:** each PDF is parsed in a **separate process** with a memory cap (512 MB), a CPU cap and a timeout (30 s). A malicious file, such as a "PDF bomb" that expands to gigabytes, only stops its own worker, never the app. That worker gets no secrets: `OPENAI_API_KEY` and `MONGODB_URI` aren't passed to it.
+- **Bounded reading:** only the first ~36,000 characters are extracted. Invisible characters (zero-width, bidirectional overrides) that can hide injected text are stripped.
+
+**Prompt injection.** Syllabus text is fenced in `<syllabus>` tags, and the model is told it's untrusted data whose instructions must never be followed. The model's output is constrained too: at most 30 topics with length limits, marks and topics taken from your configured plan, and question text length-capped and escaped wherever it's displayed or exported. The model has no tools and no access to secrets or other users' data.
+
+**Privacy.** With OpenAI selected, the syllabus text is sent to OpenAI for analysis. With Ollama, it stays on your server. Uploaded files are never stored or logged: only generated papers are saved (in accounts mode).
+
+**Updates.** Dependabot ([`.github/dependabot.yml`](.github/dependabot.yml)) opens weekly pull requests for Python packages, the Docker base image and CI actions. CI tests each one.
 
 ## Tech Stack
 - **Frontend:** Streamlit

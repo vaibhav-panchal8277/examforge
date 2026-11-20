@@ -225,3 +225,12 @@ def test_database_unreachable_shows_friendly_error(make_app, monkeypatch):
     at = make_app().run()
     assert not at.exception
     assert any("can't reach its database" in m for m in _messages(at.error))
+
+
+def test_non_pdf_upload_shows_clear_error(make_app):
+    at = make_app().run()
+    at.file_uploader[0].upload("syllabus.pdf", b"MZ\x90\x00 not really a pdf", "application/pdf").run()
+    _click(at, "Extract & Analyze Syllabus")
+    assert not at.exception
+    assert any("isn't a valid PDF" in m for m in _messages(at.error))
+    assert at.session_state["topics"] == []

@@ -98,3 +98,17 @@ def test_max_tokens_scales_with_question_count(monkeypatch):
     plan = [{"topic_name": "T", "description": "", "marks": 5}] * 30
     ai_engine.generate_questions(plan, "Easy", use_openai=False, ollama_model="m")
     assert seen["max_tokens"] == 6000
+
+
+def test_question_text_is_cleaned_and_capped():
+    long_hidden = "Explain​ sorting " + "z" * 5000
+    result = _merge_with_plan(PLAN, [{"question_text": long_hidden}, {"question_text": "Q2"}])
+    assert result[0]["question_text"].startswith("Explain sorting ")
+    assert len(result[0]["question_text"]) <= ai_engine.MAX_QUESTION_CHARS
+
+
+def test_generation_prompt_marks_topics_untrusted(monkeypatch):
+    seen = _capture_prompt(monkeypatch, 1)
+    ai_engine.generate_questions([{"topic_name": "T", "description": "", "marks": 5}], "Easy",
+                                 use_openai=False, ollama_model="m")
+    assert "untrusted" in seen["messages"][0]["content"]

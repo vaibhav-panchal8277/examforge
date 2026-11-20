@@ -10,7 +10,7 @@ import pandas as pd
 import accounts
 import settings
 from security import KeyedRegistry, LoginThrottle, RateLimiter, password_matches
-from extractor import extract_text_from_pdf
+from extractor import PDFError, extract_text_safely
 from syllabus_parser import CHUNK_CHARS, MAX_CHUNKS, is_truncated, parse_syllabus_structure, split_text
 from distribution import distribute_questions, validate_distribution
 from ai_engine import generate_questions
@@ -378,6 +378,11 @@ tab1, tab2, tab3, tab4, *extra_tabs = st.tabs(tab_names)
 with tab1:
     st.header("Upload Syllabus PDF")
     st.markdown("Upload your syllabus to extract and analyze its topic structure automatically.")
+    if _use_openai:
+        st.caption("Privacy: the syllabus text is sent to OpenAI for analysis. "
+                   "With Ollama it stays on this server. Uploaded files aren't stored.")
+    else:
+        st.caption("Privacy: the syllabus is analyzed on this server with Ollama. Uploaded files aren't stored.")
 
     uploaded_file = st.file_uploader("Choose a PDF file", type="pdf")
 
@@ -388,20 +393,29 @@ with tab1:
             read_error = None
             with st.spinner("Extracting text from PDF..."):
                 try:
-                    extracted_text = extract_text_from_pdf(uploaded_file)
-                except ValueError as e:
+                    # Parsed in a separate, time- and memory-limited process (see extractor.py).
+                    extracted_text = extract_text_safely(
+                        uploaded_file.getvalue(),
+                        max_pages=settings.PDF_MAX_PAGES,
+                        # One chunk more than is analyzed, so long syllabi still get the warning below.
+                        max_chars=(MAX_CHUNKS + 1) * CHUNK_CHARS,
+                        timeout_seconds=settings.PDF_TIMEOUT_SECONDS,
+                        memory_mb=settings.PDF_MEMORY_MB,
+                    )
+                except PDFError as e:
                     extracted_text, read_error = "", e
+                    log.warning("Rejected uploaded PDF: %s", e)
                 st.session_state.syllabus_text = extracted_text
 
             if read_error:
-                st.error(f"{read_error}. Is this a valid PDF file?")
+                st.error(str(read_error))
             elif not extracted_text.strip():
                 st.error("No text could be extracted. The PDF may be scanned or image-based.")
             else:
                 if is_truncated(extracted_text):
                     st.warning(
                         f"This syllabus is long; only the first {MAX_CHUNKS * CHUNK_CHARS:,} "
-                        f"of {len(extracted_text):,} characters will be analyzed."
+                        "characters will be analyzed."
                     )
                 n_parts = min(len(split_text(extracted_text)), MAX_CHUNKS)
                 backend_label = f"OpenAI ({st.session_state.get('openai_model')})" if _use_openai else f"Ollama ({st.session_state.get('ollama_model')})"

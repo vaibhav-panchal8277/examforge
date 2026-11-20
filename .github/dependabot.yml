@@ -1,0 +1,21 @@
+# Weekly pull requests for dependency updates, including security fixes in the
+# PDF-parsing libraries that read untrusted uploads. CI tests each update.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      python-packages:
+        patterns: ["*"]
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

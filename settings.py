@@ -59,6 +59,12 @@ MAX_AI_REQUESTS_PER_USER_PER_HOUR = _int("EXAMFORGE_MAX_AI_REQUESTS_PER_USER_PER
 # Seconds to wait for a single AI request before giving up.
 LLM_TIMEOUT_SECONDS = _int("EXAMFORGE_LLM_TIMEOUT", 120, minimum=1)
 
+# Limits for reading an uploaded PDF. Parsing runs in a separate process that is
+# stopped after PDF_TIMEOUT seconds or if it needs more than PDF_MEMORY_MB.
+PDF_MAX_PAGES = _int("EXAMFORGE_PDF_MAX_PAGES", 50, minimum=1)
+PDF_TIMEOUT_SECONDS = _int("EXAMFORGE_PDF_TIMEOUT", 30, minimum=1)
+PDF_MEMORY_MB = _int("EXAMFORGE_PDF_MEMORY_MB", 512, minimum=128)
+
 # Limits on the marks table, to keep prompts and costs bounded.
 MAX_QUESTIONS = _int("EXAMFORGE_MAX_QUESTIONS", 50, minimum=1)
 MAX_MARKS_PER_QUESTION = _int("EXAMFORGE_MAX_MARKS_PER_QUESTION", 100, minimum=1)
