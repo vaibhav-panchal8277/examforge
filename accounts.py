@@ -2,15 +2,21 @@
 User accounts and saved papers, stored in MongoDB.
 
 Collections:
-  users:  {_id, email (unique, lowercase), password_hash, created_at}
+  users:    {_id, email (unique, lowercase), password_hash, created_at}
+  sessions: {_id, token_hash (unique), user_id, created_at, expires_at}
+            "Stay signed in" sessions. Only a SHA-256 hash of each token is stored,
+            so the database alone can't be used to sign in; MongoDB deletes expired
+            sessions automatically (TTL index).
   papers: {_id, user_id, exam_name, subject_name, difficulty, total_marks,
            questions: [{question_number, question_text, marks, topic_name}], created_at}
 
 Every paper query is filtered by user_id, so a user can only ever read or
 delete their own papers.
 """
+import hashlib
 import re
-from datetime import datetime, timezone
+import secrets
+from datetime import datetime, timedelta, timezone
 
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerifyMismatchError
@@ -43,6 +49,13 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+MAX_TOKEN_LENGTH = 200
+
+
+def _hash_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
 def _object_id(value):
     try:
         return ObjectId(value)
@@ -54,7 +67,10 @@ class Store:
     def __init__(self, db):
         self.users = db["users"]
         self.papers = db["papers"]
+        self.sessions = db["sessions"]
         self.users.create_index("email", unique=True)
+        self.sessions.create_index("token_hash", unique=True)
+        self.sessions.create_index("expires_at", expireAfterSeconds=0)
         self.papers.create_index([("user_id", 1), ("created_at", DESCENDING), ("_id", DESCENDING)])
 
     # ── Users ────────────────────────────────────────────────────────────────
@@ -89,6 +105,33 @@ class Store:
             self.users.update_one({"_id": user["_id"]},
                                   {"$set": {"password_hash": _hasher.hash(password)}})
         return {"id": str(user["_id"]), "email": user["email"]}
+
+    # ── "Stay signed in" sessions ────────────────────────────────────────────
+    def create_session(self, user_id: str, days: int) -> str:
+        """Start a session for `user_id` and return its token (for the browser cookie)."""
+        token = secrets.token_urlsafe(32)  # 256 bits
+        now = _now()
+        self.sessions.insert_one({
+            "token_hash": _hash_token(token),
+            "user_id": user_id,
+            "created_at": now,
+            "expires_at": now + timedelta(days=days),
+        })
+        return token
+
+    def user_for_session(self, token: str):
+        """Return {"id", "email"} for a valid, unexpired session token, else None."""
+        if not token or len(token) > MAX_TOKEN_LENGTH:
+            return None
+        session = self.sessions.find_one({"token_hash": _hash_token(token), "expires_at": {"$gt": _now()}})
+        user_oid = _object_id(session["user_id"]) if session else None
+        user = self.users.find_one({"_id": user_oid}) if user_oid else None
+        return {"id": str(user["_id"]), "email": user["email"]} if user else None
+
+    def delete_session(self, token: str) -> None:
+        """End a session (sign out). Unknown tokens are ignored."""
+        if token and len(token) <= MAX_TOKEN_LENGTH:
+            self.sessions.delete_one({"token_hash": _hash_token(token)})
 
     # ── Papers ───────────────────────────────────────────────────────────────
     def save_paper(self, user_id: str, exam_name: str, subject_name: str,

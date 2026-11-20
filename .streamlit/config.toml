@@ -1,10 +1,15 @@
 # ExamForge theme: slate neutrals with an indigo accent, in light and dark.
 # With both [theme.light] and [theme.dark] set, the app follows the viewer's
-# system setting, and viewers can switch in the app menu (⋮ → Settings).
+# system setting by default; ExamForge's own System / Light / Dark switch
+# (theme_switch.py, top-left corner of every page) lets them choose.
+# The choice is remembered in their browser.
 
 [client]
-# Production toolbar: hides developer-only items such as the "Deploy" button.
-toolbarMode = "minimal"
+# "viewer" keeps Streamlit's ⋮ menu in the page, without developer-only items
+# such as "Deploy". ExamForge hides that menu (Print, Record screen, theme) and
+# its theme switch operates the menu's theme options behind the scenes, so this
+# must not be "minimal", which removes the menu entirely.
+toolbarMode = "viewer"
 
 [server]
 # Largest file a visitor can upload, in MB (Streamlit's default is 200).

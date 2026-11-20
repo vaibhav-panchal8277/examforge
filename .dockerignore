@@ -14,7 +14,7 @@ __pycache__/
 .pytest_cache/
 tests/
 requirements-dev.txt
-assets/
+assets/screenshots/
 .claude/
 .vscode/
 .idea/

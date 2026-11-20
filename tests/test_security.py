@@ -1,3 +1,4 @@
+import pytest
 import threading
 
 from security import LoginThrottle, RateLimiter, password_matches
@@ -100,3 +101,36 @@ def test_keyed_registry_reuses_and_evicts():
     reg.get("c")          # evicts "b"
     assert len(reg) == 2
     assert reg.get("a") is a
+
+
+from security import sign_password_session, verify_password_session
+
+
+def test_password_session_round_trip():
+    clock = FakeClock()
+    token = sign_password_session("s3cret", days=7, clock=clock)
+    assert verify_password_session(token, "s3cret", clock=clock)
+
+
+def test_password_session_expires():
+    clock = FakeClock()
+    token = sign_password_session("s3cret", days=1, clock=clock)
+    clock.now += 86400 + 1
+    assert not verify_password_session(token, "s3cret", clock=clock)
+
+
+def test_password_change_signs_everyone_out():
+    token = sign_password_session("old-password", days=7)
+    assert not verify_password_session(token, "new-password")
+
+
+@pytest.mark.parametrize("token", ["", None, "garbage", "123", "abc.def"])
+def test_malformed_password_sessions_are_rejected(token):
+    assert not verify_password_session(token, "s3cret")
+
+
+def test_extending_the_expiry_breaks_the_signature():
+    clock = FakeClock()
+    expires, signature = sign_password_session("s3cret", days=1, clock=clock).split(".")
+    forged = f"{int(expires) + 30 * 86400}.{signature}"
+    assert not verify_password_session(forged, "s3cret", clock=clock)

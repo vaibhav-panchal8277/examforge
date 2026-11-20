@@ -1,4 +1,5 @@
 """Access control and usage limits for running ExamForge as a shared/public app."""
+import hashlib
 import hmac
 import threading
 import time
@@ -8,6 +9,30 @@ from collections import OrderedDict, deque
 def password_matches(given: str, expected: str) -> bool:
     """Constant-time comparison, so response timing doesn't leak the password."""
     return hmac.compare_digest(given.encode("utf-8"), expected.encode("utf-8"))
+
+
+# ── "Stay signed in" for the shared-password mode (no database) ──────────────
+# A token is "<expiry>.<signature>", signed with a key derived from the app
+# password: it can't be forged or extended, and changing EXAMFORGE_PASSWORD
+# signs everyone out.
+def _session_signature(secret: str, expires: int) -> str:
+    key = hashlib.sha256(b"examforge-session-key:" + secret.encode("utf-8")).digest()
+    return hmac.new(key, f"examforge-session:{expires}".encode(), hashlib.sha256).hexdigest()
+
+
+def sign_password_session(secret: str, days: int, clock=time.time) -> str:
+    expires = int(clock()) + days * 86400
+    return f"{expires}.{_session_signature(secret, expires)}"
+
+
+def verify_password_session(token: str, secret: str, clock=time.time) -> bool:
+    try:
+        expires_text, signature = (token or "").split(".", 1)
+        expires = int(expires_text)
+    except ValueError:
+        return False
+    return (expires > clock()
+            and hmac.compare_digest(signature, _session_signature(secret, expires)))
 
 
 class LoginThrottle:

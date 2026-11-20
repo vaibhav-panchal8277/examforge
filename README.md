@@ -18,7 +18,7 @@ ExamForge is a professional web application that allows educators to upload a sy
 - **Smart Generation:** Generates non-repetitive, topic-balanced questions adapting depth to the assigned marks.
 - **PDF Export:** Downloads the final generated question paper as a clean, professionally formatted PDF.
 - **User Accounts & My Papers (optional):** With a MongoDB database (e.g. MongoDB Atlas), users sign up and sign in, and every paper they generate is saved to their account to reopen, re-download or delete later.
-- **Light & Dark Themes:** Clean slate-and-indigo interface built on Streamlit that follows your system's light or dark setting.
+- **Light & Dark Themes:** Clean slate-and-indigo interface with a **System / Light / Dark** switch in the top-left corner of every page. It applies instantly and is remembered in your browser.
 
 ## Screenshots
 
@@ -112,6 +112,7 @@ Settings are read from environment variables, or from a `.env` file for local us
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server address. `OLLAMA_HOST` is also accepted. |
 | `MONGODB_URI` | none | MongoDB connection string. Turns on [user accounts](#user-accounts-mongodb-atlas). |
 | `MONGODB_DB` | `examforge` | Database name inside your cluster. |
+| `EXAMFORGE_SESSION_DAYS` | `7` | How long a sign-in lasts. Users stay signed in across page reloads until then, or until they sign out. |
 | `EXAMFORGE_MAX_AI_REQUESTS_PER_USER_PER_HOUR` | `30` | Per-user cap on AI requests (accounts only), on top of the app-wide cap. |
 | `EXAMFORGE_PASSWORD` | none | Shared password for the whole app, used only **without** accounts. **Set this (or use accounts) before exposing the app publicly.** |
 | `EXAMFORGE_MAX_AI_REQUESTS_PER_HOUR` | `120` | App-wide cap on AI requests using the server's key or Ollama. Visitors using their own key aren't counted. `0` = unlimited. |
@@ -139,7 +140,7 @@ To connect MongoDB Atlas:
    ```
 6. Restart the app. The `users` and `papers` collections and their indexes are created automatically.
 
-Passwords are stored only as Argon2id hashes. Repeated wrong passwords lock that email out for a minute, and each user has their own hourly AI limit. Any MongoDB works, not just Atlas. For a local one: `docker run -d -p 27017:27017 mongo:7` with `MONGODB_URI=mongodb://localhost:27017`.
+Users **stay signed in** across page reloads for `EXAMFORGE_SESSION_DAYS` (default 7) or until they sign out: a random session token is kept in a browser cookie (`SameSite=Strict`, `Secure` over HTTPS), and the database stores only its SHA-256 hash. Signing out ends the session on the server. Passwords are stored only as Argon2id hashes. Repeated wrong passwords lock that email out for a minute, and each user has their own hourly AI limit. Any MongoDB works, not just Atlas. For a local one: `docker run -d -p 27017:27017 mongo:7` with `MONGODB_URI=mongodb://localhost:27017`.
 
 ## Deployment
 

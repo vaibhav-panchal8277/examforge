@@ -110,3 +110,56 @@ def test_bad_paper_ids_are_handled(store, bad_id):
 def test_connect_fails_fast_when_unreachable():
     with pytest.raises(Exception):
         accounts.connect("mongodb://127.0.0.1:1/?serverSelectionTimeoutMS=500", "x")
+
+
+# ── "Stay signed in" sessions ────────────────────────────────────────────────
+from datetime import datetime, timedelta, timezone
+
+
+def test_session_restores_user(store):
+    user = store.create_user("a@b.co", "password123")
+    token = store.create_session(user["id"], days=7)
+    assert len(token) >= 40
+    assert store.user_for_session(token) == user
+
+
+def test_only_a_hash_of_the_token_is_stored(store):
+    user = store.create_user("a@b.co", "password123")
+    token = store.create_session(user["id"], days=7)
+    doc = store.sessions.find_one({})
+    assert token not in str(doc) and len(doc["token_hash"]) == 64
+
+
+def test_expired_session_is_rejected(store):
+    user = store.create_user("a@b.co", "password123")
+    token = store.create_session(user["id"], days=7)
+    store.sessions.update_many({}, {"$set": {"expires_at": datetime.now(timezone.utc) - timedelta(minutes=1)}})
+    assert store.user_for_session(token) is None
+
+
+def test_signed_out_session_is_rejected(store):
+    user = store.create_user("a@b.co", "password123")
+    token = store.create_session(user["id"], days=7)
+    store.delete_session(token)
+    assert store.user_for_session(token) is None
+
+
+@pytest.mark.parametrize("token", ["", None, "made-up-token", "x" * 500])
+def test_unknown_or_odd_tokens_are_rejected(store, token):
+    assert store.user_for_session(token) is None
+    store.delete_session(token)  # must not raise
+
+
+def test_session_for_deleted_user_is_rejected(store):
+    user = store.create_user("a@b.co", "password123")
+    token = store.create_session(user["id"], days=7)
+    store.users.delete_many({})
+    assert store.user_for_session(token) is None
+
+
+def test_sessions_are_per_user(store):
+    alice = store.create_user("alice@b.co", "password123")
+    bob = store.create_user("bob@b.co", "password123")
+    ta, tb = store.create_session(alice["id"], 7), store.create_session(bob["id"], 7)
+    assert store.user_for_session(ta)["email"] == "alice@b.co"
+    assert store.user_for_session(tb)["email"] == "bob@b.co"

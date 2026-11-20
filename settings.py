@@ -56,6 +56,9 @@ MONGODB_DB = os.getenv("MONGODB_DB", "").strip() or "examforge"
 # the app-wide cap. Requests made with the user's own OpenAI key aren't counted.
 MAX_AI_REQUESTS_PER_USER_PER_HOUR = _int("EXAMFORGE_MAX_AI_REQUESTS_PER_USER_PER_HOUR", 30)
 
+# How long a sign-in lasts ("stay signed in", survives page reloads), in days.
+SESSION_DAYS = _int("EXAMFORGE_SESSION_DAYS", 7, minimum=1)
+
 # Seconds to wait for a single AI request before giving up.
 LLM_TIMEOUT_SECONDS = _int("EXAMFORGE_LLM_TIMEOUT", 120, minimum=1)
 

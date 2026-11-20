@@ -56,7 +56,7 @@ def test_password_gate(make_app, monkeypatch):
     monkeypatch.setattr(settings, "ACCESS_PASSWORD", "s3cret")
     at = make_app().run()
     assert len(at.tabs) == 0  # nothing but the sign-in form
-    assert "password protected" in " ".join(_messages(at.caption))
+    assert any("password protected" in m.value for m in at.markdown)
 
     at.text_input[0].input("wrong")
     at.button[0].click().run()
@@ -234,3 +234,63 @@ def test_non_pdf_upload_shows_clear_error(make_app):
     assert not at.exception
     assert any("isn't a valid PDF" in m for m in _messages(at.error))
     assert at.session_state["topics"] == []
+
+
+# ── "Stay signed in": restoring a sign-in from the browser cookie ────────────
+import session_cookie
+from security import sign_password_session
+
+
+def _cookie(monkeypatch, token):
+    monkeypatch.setattr(session_cookie, "read_token", lambda: token)
+
+
+def test_reload_with_valid_session_cookie_stays_signed_in(make_accounts_app, monkeypatch):
+    at = make_accounts_app()
+    user = at.store.create_user("teacher@school.edu", "password123")
+    _cookie(monkeypatch, at.store.create_session(user["id"], days=7))
+    at.run()  # a fresh page load: nothing in session state yet
+    assert not at.exception
+    assert "My Papers" in [t.label for t in at.tabs]
+    assert at.session_state["user"]["email"] == "teacher@school.edu"
+
+
+def test_reload_with_stale_cookie_shows_sign_in(make_accounts_app, monkeypatch):
+    at = make_accounts_app()
+    _cookie(monkeypatch, "expired-or-made-up")
+    at.run()
+    assert [t.label for t in at.tabs] == ["Sign in", "Create account"]
+    assert at.session_state["clear_session_cookie"] is True  # the browser is told to drop it
+
+
+def test_sign_in_issues_a_session(make_accounts_app):
+    at = make_accounts_app().run()
+    _sign_up(at, "teacher@school.edu")
+    token = at.session_state["session_token"]
+    assert at.store.user_for_session(token)["email"] == "teacher@school.edu"
+
+
+def test_sign_out_ends_the_session_and_ignores_old_cookie(make_accounts_app, monkeypatch):
+    at = make_accounts_app().run()
+    _sign_up(at, "teacher@school.edu")
+    token = at.session_state["session_token"]
+    _cookie(monkeypatch, token)  # the page still carries the cookie until it reloads
+    _click(at, "Sign out")
+    assert at.store.user_for_session(token) is None  # revoked on the server
+    assert [t.label for t in at.tabs] == ["Sign in", "Create account"]
+    at.run()
+    assert [t.label for t in at.tabs] == ["Sign in", "Create account"]  # not signed back in
+
+
+def test_password_mode_reload_stays_signed_in(make_app, monkeypatch):
+    monkeypatch.setattr(settings, "ACCESS_PASSWORD", "s3cret")
+    _cookie(monkeypatch, sign_password_session("s3cret", days=7))
+    at = make_app().run()
+    assert len(at.tabs) == 4
+
+
+def test_password_mode_rejects_cookie_after_password_change(make_app, monkeypatch):
+    monkeypatch.setattr(settings, "ACCESS_PASSWORD", "new-password")
+    _cookie(monkeypatch, sign_password_session("old-password", days=7))
+    at = make_app().run()
+    assert len(at.tabs) == 0  # back to the password screen
