@@ -24,7 +24,15 @@ ExamForge is a professional web application that allows educators to upload a sy
 
 Screenshots follow your GitHub theme: switch GitHub between light and dark mode to see both.
 
-### 1. Upload & Analyze Syllabus
+### 1. Sign In
+Sign in or create a free account (with MongoDB accounts enabled). Switch between System, Light and Dark themes from the top-left corner.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/signin-dark.png">
+  <img alt="ExamForge sign-in page with brand panel, sign-in form and theme switch" src="assets/screenshots/signin-light.png">
+</picture>
+
+### 2. Upload & Analyze Syllabus
 Upload your syllabus and select your AI backend (Local or Cloud).
 
 <picture>
@@ -32,7 +40,7 @@ Upload your syllabus and select your AI backend (Local or Cloud).
   <img alt="ExamForge upload tab with discovered syllabus topics" src="assets/screenshots/upload-light.png">
 </picture>
 
-### 2. Exam Configuration
+### 3. Exam Configuration
 Define your exact exam marks and difficulty level.
 
 <picture>
@@ -40,7 +48,7 @@ Define your exact exam marks and difficulty level.
   <img alt="Exam configuration with exam name, difficulty and marks distribution" src="assets/screenshots/configuration-light.png">
 </picture>
 
-### 3. Generated Question Paper
+### 4. Generated Question Paper
 Instantly generate and review balanced questions tailored to your marks distribution.
 
 <picture>
@@ -48,12 +56,20 @@ Instantly generate and review balanced questions tailored to your marks distribu
   <img alt="Generated question paper with questions, topics and marks" src="assets/screenshots/generated-paper-light.png">
 </picture>
 
-### 4. PDF Export
+### 5. PDF Export
 Download a professionally formatted question paper ready for print.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/export-dark.png">
   <img alt="Export tab with the Download Question Paper PDF button" src="assets/screenshots/export-light.png">
+</picture>
+
+### 6. My Papers
+Every paper you generate is saved to your account, to reopen, re-download or delete later.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/my-papers-dark.png">
+  <img alt="My Papers tab listing a saved exam paper with Open, Download PDF and Delete" src="assets/screenshots/my-papers-light.png">
 </picture>
 
 ## Setup Instructions
