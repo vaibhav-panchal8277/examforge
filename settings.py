@@ -46,6 +46,16 @@ ACCESS_PASSWORD = os.getenv("EXAMFORGE_PASSWORD", "")
 # 0 = unlimited.
 MAX_AI_REQUESTS_PER_HOUR = _int("EXAMFORGE_MAX_AI_REQUESTS_PER_HOUR", 120)
 
+# MongoDB connection string (e.g. an Atlas mongodb+srv://... URI). When set,
+# ExamForge has user accounts and saves each user's papers; EXAMFORGE_PASSWORD
+# is then not used. Empty = no accounts (the app works as a single shared tool).
+MONGODB_URI = os.getenv("MONGODB_URI", "").strip()
+MONGODB_DB = os.getenv("MONGODB_DB", "").strip() or "examforge"
+
+# Per-user cap on AI requests per rolling hour (accounts mode only), on top of
+# the app-wide cap. Requests made with the user's own OpenAI key aren't counted.
+MAX_AI_REQUESTS_PER_USER_PER_HOUR = _int("EXAMFORGE_MAX_AI_REQUESTS_PER_USER_PER_HOUR", 30)
+
 # Seconds to wait for a single AI request before giving up.
 LLM_TIMEOUT_SECONDS = _int("EXAMFORGE_LLM_TIMEOUT", 120, minimum=1)
 

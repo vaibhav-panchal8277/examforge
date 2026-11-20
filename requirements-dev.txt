@@ -1,1 +1,2 @@
 pytest>=9.2,<10
+mongomock>=4.3,<5

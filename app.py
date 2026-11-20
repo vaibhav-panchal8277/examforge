@@ -2,12 +2,14 @@ import html
 import logging
 import math
 import os
+import re
 
 import streamlit as st
 import pandas as pd
 
+import accounts
 import settings
-from security import LoginThrottle, RateLimiter, password_matches
+from security import KeyedRegistry, LoginThrottle, RateLimiter, password_matches
 from extractor import extract_text_from_pdf
 from syllabus_parser import CHUNK_CHARS, MAX_CHUNKS, is_truncated, parse_syllabus_structure, split_text
 from distribution import distribute_questions, validate_distribution
@@ -28,14 +30,39 @@ APP_DIR = os.path.dirname(os.path.abspath(__file__))
 # into a widget, because widget values are sent to the browser.
 ENV_OPENAI_KEY = settings.OPENAI_API_KEY
 
+# With a MongoDB connection, ExamForge has user accounts and saves each user's papers.
+ACCOUNTS_ENABLED = bool(settings.MONGODB_URI)
+
 
 @st.cache_resource
 def get_ai_limiter() -> RateLimiter:
     """One limiter shared by every session, so it caps the app's total AI usage."""
-    if ENV_OPENAI_KEY and not settings.ACCESS_PASSWORD:
+    if ENV_OPENAI_KEY and ACCOUNTS_ENABLED:
+        log.info("Accounts are open for sign-up and OPENAI_API_KEY is set: signed-in users can use "
+                 "your OpenAI key, up to %s requests/hour each and %s/hour in total.",
+                 settings.MAX_AI_REQUESTS_PER_USER_PER_HOUR, settings.MAX_AI_REQUESTS_PER_HOUR)
+    elif ENV_OPENAI_KEY and not settings.ACCESS_PASSWORD:
         log.warning("OPENAI_API_KEY is set but EXAMFORGE_PASSWORD is not: anyone who can "
                     "reach this app can use your OpenAI key. Set EXAMFORGE_PASSWORD before exposing it.")
     return RateLimiter(settings.MAX_AI_REQUESTS_PER_HOUR)
+
+
+@st.cache_resource(show_spinner=False)
+def get_store() -> accounts.Store:
+    """One MongoDB connection pool shared by every session."""
+    return accounts.connect(settings.MONGODB_URI, settings.MONGODB_DB)
+
+
+@st.cache_resource
+def get_user_limiters() -> KeyedRegistry:
+    """Per-user hourly AI limits (accounts mode)."""
+    return KeyedRegistry(lambda: RateLimiter(settings.MAX_AI_REQUESTS_PER_USER_PER_HOUR))
+
+
+@st.cache_resource
+def get_login_throttles() -> KeyedRegistry:
+    """Per-email sign-in lockouts, so a new browser session doesn't reset them."""
+    return KeyedRegistry(LoginThrottle)
 
 # ── Page config ────────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -71,6 +98,7 @@ st.markdown("""
     }
     .sidebar-brand { text-align: center; margin: 0; }
     .sidebar-tagline { text-align: center; opacity: 0.65; margin-top: 0.25rem; }
+    .signed-in { font-size: 0.85rem; opacity: 0.8; margin-bottom: 0.5rem; overflow-wrap: anywhere; }
 
     /* Backend status dots */
     .status-dot {
@@ -110,9 +138,82 @@ def render_login() -> None:
                 st.error("Incorrect password.")
 
 
-if settings.ACCESS_PASSWORD and not st.session_state.get("authenticated"):
+# ── User accounts (only when MONGODB_URI is set) ──────────────────────────────
+def start_session(user: dict) -> None:
+    st.session_state.user = user
+    st.rerun()
+
+
+def sign_out() -> None:
+    """Clear everything, so the next person on this browser sees nothing of the last."""
+    for key in list(st.session_state.keys()):
+        del st.session_state[key]
+
+
+def render_account_screen(store: accounts.Store) -> None:
+    _, col, _ = st.columns([1, 1.2, 1])
+    with col:
+        st.title("ExamForge")
+        st.caption("Sign in to generate exam papers and keep them in your account.")
+        sign_in_tab, sign_up_tab = st.tabs(["Sign in", "Create account"])
+
+        with sign_in_tab:
+            with st.form("sign_in"):
+                email = st.text_input("Email", key="signin_email")
+                password = st.text_input("Password", type="password", key="signin_password")
+                submitted = st.form_submit_button("Sign in", type="primary", width="stretch")
+            if submitted:
+                throttle = get_login_throttles().get(accounts.normalize_email(email))
+                wait = throttle.seconds_locked()
+                if wait:
+                    st.error(f"Too many attempts. Try again in {math.ceil(wait)} seconds.")
+                else:
+                    user = store.authenticate(email, password)
+                    if user:
+                        throttle.record_success()
+                        start_session(user)
+                    else:
+                        throttle.record_failure()
+                        log.warning("Failed sign-in attempt")
+                        st.error("Incorrect email or password.")
+
+        with sign_up_tab:
+            with st.form("sign_up"):
+                new_email = st.text_input("Email", key="signup_email")
+                new_password = st.text_input(
+                    "Password", type="password", key="signup_password",
+                    help=f"At least {accounts.MIN_PASSWORD_LENGTH} characters.")
+                confirm = st.text_input("Confirm password", type="password", key="signup_confirm")
+                created = st.form_submit_button("Create account", type="primary", width="stretch")
+            if created:
+                if new_password != confirm:
+                    st.error("Passwords don't match.")
+                else:
+                    try:
+                        user = store.create_user(new_email, new_password)
+                    except accounts.AccountError as e:
+                        st.error(str(e))
+                    else:
+                        log.info("New account created")
+                        start_session(user)
+
+
+store = None
+if ACCOUNTS_ENABLED:
+    try:
+        store = get_store()
+    except Exception:
+        log.exception("Could not connect to MongoDB")
+        st.error("ExamForge can't reach its database right now. Please try again in a moment.")
+        st.stop()
+    if not st.session_state.get("user"):
+        render_account_screen(store)
+        st.stop()
+elif settings.ACCESS_PASSWORD and not st.session_state.get("authenticated"):
     render_login()
     st.stop()
+
+current_user = st.session_state.get("user")  # {"id", "email"} in accounts mode, else None
 
 # ── Session state defaults ─────────────────────────────────────────────────────
 DEFAULTS = {
@@ -127,6 +228,8 @@ DEFAULTS = {
     "openai_key": "",
     "openai_model": "gpt-4o-mini",
     "ollama_model": "",
+    "current_paper_id": None,  # saved paper shown in Generated Paper (accounts mode)
+    "flash": None,             # one-off message shown on the next run
 }
 for k, v in DEFAULTS.items():
     if k not in st.session_state:
@@ -196,9 +299,13 @@ with st.sidebar:
             st.session_state["ollama_model"] = ""
 
     st.divider()
-    if settings.ACCESS_PASSWORD and st.button("Sign out", width="stretch"):
-        st.session_state.authenticated = False
-        st.rerun()
+    if current_user:
+        # Raw HTML so Markdown doesn't turn the email address into a mailto link.
+        st.markdown(
+            f"<div class='signed-in'>Signed in as<br><b>{html.escape(current_user['email'])}</b></div>",
+            unsafe_allow_html=True)
+    if current_user or settings.ACCESS_PASSWORD:
+        st.button("Sign out", width="stretch", on_click=sign_out)
 
 # ── Guard: ensure a model is ready ────────────────────────────────────────────
 _use_openai = st.session_state.use_openai
@@ -224,11 +331,21 @@ def ai_kwargs() -> dict:
 
 def reserve_ai_requests(cost: int) -> bool:
     """
-    Count `cost` AI requests against the app-wide hourly limit, showing an error
-    if it's reached. Visitors using their own OpenAI key aren't limited: they pay.
+    Count `cost` AI requests against the hourly limits (per user in accounts mode,
+    then app-wide), showing an error if one is reached. Visitors using their own
+    OpenAI key aren't limited: they pay.
     """
     if st.session_state.use_openai and st.session_state.get("openai_key"):
         return True
+    if current_user:
+        allowed, retry_after = get_user_limiters().get(current_user["id"]).try_acquire(cost)
+        if not allowed:
+            log.warning("Per-user AI limit reached (%s requests/hour)", settings.MAX_AI_REQUESTS_PER_USER_PER_HOUR)
+            st.error(
+                f"You've reached your limit of {settings.MAX_AI_REQUESTS_PER_USER_PER_HOUR} AI requests per hour. "
+                f"Try again in about {max(1, math.ceil(retry_after / 60))} minute(s), or use your own OpenAI key."
+            )
+            return False
     allowed, retry_after = get_ai_limiter().try_acquire(cost)
     if not allowed:
         log.warning("AI usage limit reached (%s requests/hour)", settings.MAX_AI_REQUESTS_PER_HOUR)
@@ -249,7 +366,14 @@ elif _use_openai:
 else:
     st.caption(f"Backend: Local Ollama ({st.session_state.get('ollama_model')})")
 
-tab1, tab2, tab3, tab4 = st.tabs(["1. Upload", "2. Configuration", "3. Generated Paper", "4. Export"])
+if st.session_state.flash:
+    st.toast(st.session_state.flash)
+    st.session_state.flash = None
+
+tab_names = ["1. Upload", "2. Configuration", "3. Generated Paper", "4. Export"]
+if current_user:
+    tab_names.append("My Papers")
+tab1, tab2, tab3, tab4, *extra_tabs = st.tabs(tab_names)
 
 with tab1:
     st.header("Upload Syllabus PDF")
@@ -337,11 +461,25 @@ with tab2:
                 with st.spinner(f"Generating {len(question_plan)} question(s) with {backend_label}..."):
                     try:
                         questions = generate_questions(question_plan, difficulty=st.session_state.difficulty, **ai_kwargs())
-                        st.session_state.generated_questions = questions
-                        st.success(f"Generated **{len(questions)}** question(s). Check the 'Generated Paper' tab.")
                     except Exception as e:
                         log.exception("Question generation failed")
                         st.error(f"Question generation failed: {e}")
+                    else:
+                        st.session_state.generated_questions = questions
+                        st.session_state.current_paper_id = None
+                        saved_note = ""
+                        if current_user:
+                            try:
+                                st.session_state.current_paper_id = store.save_paper(
+                                    current_user["id"], st.session_state.exam_name,
+                                    st.session_state.subject_name, st.session_state.difficulty, questions)
+                                saved_note = " and saved it to **My Papers**"
+                            except Exception:
+                                log.exception("Saving a paper failed")
+                                st.warning("The paper couldn't be saved to your account right now. "
+                                           "You can still view and export it.")
+                        st.success(f"Generated **{len(questions)}** question(s){saved_note}. "
+                                   "Check the 'Generated Paper' tab.")
 
 with tab3:
     st.header("Generated Question Paper")
@@ -389,3 +527,68 @@ with tab4:
             )
     else:
         st.info("Generate questions first, then export here.")
+
+
+# ── My Papers (accounts mode) ─────────────────────────────────────────────────
+def pdf_file_name(exam_name: str) -> str:
+    name = re.sub(r"[^A-Za-z0-9._-]+", "_", exam_name).strip("_")[:60]
+    return f"{name or 'QuestionPaper'}.pdf"
+
+
+def open_paper(paper: dict) -> None:
+    # Runs as a button callback, before widgets are drawn, so it may set widget values.
+    st.session_state.generated_questions = paper["questions"]
+    st.session_state.exam_name = paper["exam_name"]
+    st.session_state.subject_name = paper["subject_name"]
+    st.session_state.difficulty = paper["difficulty"]
+    st.session_state.current_paper_id = paper["id"]
+    st.session_state.flash = f"Opened “{paper['exam_name']}”. See the Generated Paper tab."
+
+
+def delete_paper(paper_id: str) -> None:
+    try:
+        deleted = store.delete_paper(current_user["id"], paper_id)
+    except Exception:
+        log.exception("Deleting a paper failed")
+        deleted = False
+    st.session_state.flash = "Paper deleted." if deleted else "The paper couldn't be deleted. Please try again."
+
+
+if current_user:
+    with extra_tabs[0]:
+        st.header("My Papers")
+        try:
+            papers = store.list_papers(current_user["id"])
+        except Exception:
+            log.exception("Loading papers failed")
+            st.error("Your papers couldn't be loaded right now. Please try again in a moment.")
+            papers = None
+
+        if papers == []:
+            st.info("Papers you generate are saved here automatically.")
+        elif papers:
+            st.caption(f"Your {len(papers)} most recent paper(s), newest first.")
+        for paper in papers or []:
+            with st.container(border=True):
+                st.markdown(f"**{html.escape(paper['exam_name'])}**")
+                created = paper["created_at"].strftime("%d %b %Y, %H:%M UTC")
+                st.caption(
+                    f"{paper['subject_name']} · {paper['total_marks']} marks · "
+                    f"{len(paper['questions'])} questions · {paper['difficulty']} · {created}"
+                )
+                # A row that sizes buttons to their labels and wraps on narrow screens.
+                with st.container(horizontal=True):
+                    st.button("Open", key=f"open_{paper['id']}", icon=":material/open_in_new:",
+                              on_click=open_paper, args=(paper,))
+                    try:
+                        st.download_button(
+                            "Download PDF", key=f"pdf_{paper['id']}", icon=":material/download:",
+                            data=generate_pdf(paper["exam_name"], paper["subject_name"], paper["questions"]),
+                            file_name=pdf_file_name(paper["exam_name"]), mime="application/pdf")
+                    except Exception:
+                        log.exception("Building a saved paper's PDF failed")
+                        st.caption("PDF unavailable")
+                    with st.popover("Delete", icon=":material/delete:"):
+                        st.markdown("Delete this paper permanently? This can't be undone.")
+                        st.button("Delete paper", key=f"delete_{paper['id']}", type="primary",
+                                  on_click=delete_paper, args=(paper["id"],))

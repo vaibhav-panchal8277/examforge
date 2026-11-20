@@ -86,3 +86,17 @@ def test_rate_limiter_is_thread_safe():
     for t in threads:
         t.join()
     assert results.count(True) == 100
+
+
+from security import KeyedRegistry
+
+
+def test_keyed_registry_reuses_and_evicts():
+    reg = KeyedRegistry(list, max_items=2)
+    a = reg.get("a")
+    assert reg.get("a") is a
+    reg.get("b")
+    reg.get("a")          # "a" is now most recently used
+    reg.get("c")          # evicts "b"
+    assert len(reg) == 2
+    assert reg.get("a") is a

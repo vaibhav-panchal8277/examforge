@@ -2,7 +2,7 @@
 import hmac
 import threading
 import time
-from collections import deque
+from collections import OrderedDict, deque
 
 
 def password_matches(given: str, expected: str) -> bool:
@@ -32,6 +32,33 @@ class LoginThrottle:
     def record_success(self) -> None:
         self.failures = 0
         self.locked_until = 0.0
+
+
+class KeyedRegistry:
+    """
+    Thread-safe map from a key (e.g. a user id or email) to a lazily created
+    object. Holds at most `max_items`, evicting the least recently used, so
+    requests with endless made-up keys can't exhaust memory.
+    """
+
+    def __init__(self, factory, max_items: int = 10_000):
+        self._factory = factory
+        self._max_items = max_items
+        self._items = OrderedDict()
+        self._lock = threading.Lock()
+
+    def get(self, key):
+        with self._lock:
+            if key in self._items:
+                self._items.move_to_end(key)
+            else:
+                self._items[key] = self._factory()
+                if len(self._items) > self._max_items:
+                    self._items.popitem(last=False)
+            return self._items[key]
+
+    def __len__(self):
+        return len(self._items)
 
 
 class RateLimiter:

@@ -8,7 +8,7 @@ import settings
 @pytest.fixture
 def reload_settings(monkeypatch):
     for name in ["OLLAMA_BASE_URL", "OLLAMA_HOST", "EXAMFORGE_MAX_AI_REQUESTS_PER_HOUR",
-                 "EXAMFORGE_LLM_TIMEOUT", "EXAMFORGE_PASSWORD"]:
+                 "EXAMFORGE_LLM_TIMEOUT", "EXAMFORGE_PASSWORD", "MONGODB_URI", "MONGODB_DB"]:
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setattr("dotenv.load_dotenv", lambda *a, **k: False)  # ignore any local .env
     yield lambda: importlib.reload(settings)
@@ -22,6 +22,9 @@ def test_defaults(reload_settings):
     assert s.MAX_AI_REQUESTS_PER_HOUR == 120
     assert s.LLM_TIMEOUT_SECONDS == 120
     assert s.ACCESS_PASSWORD == ""
+    assert s.MONGODB_URI == ""
+    assert s.MONGODB_DB == "examforge"
+    assert s.MAX_AI_REQUESTS_PER_USER_PER_HOUR == 30
 
 
 @pytest.mark.parametrize("env, expected", [
